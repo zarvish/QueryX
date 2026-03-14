@@ -4,17 +4,20 @@
 
 ### Handling 100x Growth
 
+> **Note:** The current implementation represents a simplified prototype.  
+> The following sections outline how the system architecture would evolve for production-scale deployments, focusing on scalability, resilience, security, and operational maturity.
+
 **Document volume (10M → 1B documents):**
 - Shard Elasticsearch horizontally: increase `number_of_shards` per index, or introduce an index alias strategy with time-based indices (ILM)
 - Move to Elasticsearch cluster with dedicated master, data, and coordinator nodes
 - Introduce index rollover using Elasticsearch ILM policies to cap index size at ~50GB/shard
-- Consider Apache Kafka for async indexing pipeline: write to Postgres → publish `document.created` event → ES consumer indexes asynchronously
+- For higher scale deployments, an event-driven indexing pipeline using Kafka or a similar message queue can decouple writes from search indexing.
 
 **Traffic volume (1K → 100K req/s):**
 - Horizontal API scaling behind Nginx/cloud load balancer (stateless instances trivially scalable)
 - Redis Cluster for distributed caching (consistent hashing across multiple Redis nodes)
 - PostgreSQL read replicas for metadata reads; write to primary, read from replicas
-- Consider CockroachDB or PlanetScale for geo-distributed metadata if operating cross-region
+- Cross-region deployments could use read replicas or globally distributed databases depending on latency requirements.
 
 **Per-tenant index sprawl (1000+ tenants):**
 - Implement tenant-based index aliasing: group small tenants into shared indices with mandatory routing
