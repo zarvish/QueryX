@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.gitignore
+*.md
+tests
+scripts
+docs
+postman
+coverage
+.env
+.env.*
+!.env.example
+docker-compose*.yml
+*.log
+.DS_Store

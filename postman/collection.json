@@ -1,0 +1,340 @@
+{
+  "info": {
+    "_postman_id": "queryx-distributed-doc-search",
+    "name": "QueryX — Distributed Document Search API",
+    "description": "Complete API collection for the QueryX Distributed Document Search Service. Demonstrates multi-tenant document indexing, full-text search with facets/highlighting/fuzzy, and health monitoring.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "tenantId",
+      "value": "acme-corp-001",
+      "type": "string"
+    },
+    {
+      "key": "documentId",
+      "value": "",
+      "type": "string",
+      "description": "Set after creating a document"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Get Health Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Returns full system health including Elasticsearch, Redis, and PostgreSQL dependency status. No authentication required."
+          },
+          "response": [
+            {
+              "name": "Healthy",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"status\": \"healthy\",\n    \"version\": \"1.0.0\",\n    \"uptime\": 3600,\n    \"deploymentColor\": \"blue\",\n    \"dependencies\": {\n      \"elasticsearch\": { \"status\": \"healthy\", \"latencyMs\": 4 },\n      \"redis\": { \"status\": \"healthy\", \"latencyMs\": 1 },\n      \"database\": { \"status\": \"healthy\", \"latencyMs\": 7 }\n    }\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Create Document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const jsonData = pm.response.json();",
+                  "  pm.collectionVariables.set('documentId', jsonData.data.id);",
+                  "  pm.test('Document created successfully', function() {",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.id).to.exist;",
+                  "  });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Q4 2024 Financial Report\",\n  \"content\": \"This quarterly financial report covers revenue, expenses, and EBITDA for Q4 2024. Revenue grew 23% YoY to $4.2M. Operating margin improved to 18% from 14% last year. Key drivers include new enterprise customer acquisitions and cost optimization in the engineering department.\",\n  \"author\": \"alice@acmecorp.com\",\n  \"tags\": [\"finance\", \"quarterly-report\", \"2024\", \"executive\"],\n  \"fileUrl\": \"https://s3.acme.com/docs/q4-2024-report.pdf\",\n  \"fileSize\": 2456789,\n  \"mimeType\": \"application/pdf\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents"]
+            },
+            "description": "Indexes a new document for the tenant. Document is stored in PostgreSQL and indexed in Elasticsearch. Invalidates tenant search caches."
+          },
+          "response": [
+            {
+              "name": "Created",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"550e8400-e29b-41d4-a716-446655440001\",\n    \"tenantId\": \"acme-corp-001\",\n    \"title\": \"Q4 2024 Financial Report\",\n    \"author\": \"alice@acmecorp.com\",\n    \"tags\": [\"finance\", \"quarterly-report\", \"2024\", \"executive\"],\n    \"isDeleted\": false,\n    \"createdAt\": \"2024-12-15T10:30:00.000Z\",\n    \"updatedAt\": \"2024-12-15T10:30:00.000Z\"\n  },\n  \"meta\": {\n    \"requestId\": \"req-uuid-here\",\n    \"timestamp\": \"2024-12-15T10:30:00.000Z\",\n    \"took\": 45\n  }\n}"
+            },
+            {
+              "name": "Validation Error",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"VALIDATION_ERROR\",\n    \"message\": \"Invalid request body\",\n    \"requestId\": \"req-uuid-here\",\n    \"timestamp\": \"2024-12-15T10:30:00.000Z\",\n    \"details\": { \"title\": { \"_errors\": [\"Title is required\"] } }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Document by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "{{documentId}}"]
+            },
+            "description": "Retrieves a document by ID. Uses Redis cache (300s TTL) — cache miss fetches from PostgreSQL and caches result."
+          },
+          "response": [
+            {
+              "name": "Found",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"550e8400-e29b-41d4-a716-446655440001\",\n    \"tenantId\": \"acme-corp-001\",\n    \"title\": \"Q4 2024 Financial Report\",\n    \"content\": \"This quarterly financial report covers...\",\n    \"author\": \"alice@acmecorp.com\",\n    \"tags\": [\"finance\", \"quarterly-report\"],\n    \"isDeleted\": false,\n    \"createdAt\": \"2024-12-15T10:30:00.000Z\",\n    \"updatedAt\": \"2024-12-15T10:30:00.000Z\"\n  },\n  \"meta\": { \"requestId\": \"req-uuid\", \"timestamp\": \"...\", \"took\": 3 }\n}"
+            },
+            {
+              "name": "Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"NOT_FOUND\",\n    \"message\": \"Document '550e8400...' not found\",\n    \"requestId\": \"req-uuid\",\n    \"timestamp\": \"...\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Document",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Q4 2024 Financial Report — Revised\",\n  \"tags\": [\"finance\", \"quarterly-report\", \"2024\", \"revised\", \"executive\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "{{documentId}}"]
+            },
+            "description": "Updates document metadata. Synchronizes changes to Elasticsearch and invalidates document + search caches."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Document (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "{{documentId}}"]
+            },
+            "description": "Soft-deletes the document. Sets isDeleted=true in PostgreSQL and marks is_deleted=true in Elasticsearch. Document stops appearing in search results."
+          },
+          "response": [
+            {
+              "name": "Deleted",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": { \"deleted\": true, \"id\": \"550e8400-e29b-41d4-a716-446655440001\" },\n  \"meta\": { \"requestId\": \"req-uuid\", \"timestamp\": \"...\", \"took\": 22 }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Basic Full-Text Search",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=financial report&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q", "value": "financial report" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Fuzzy Search",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=finacial+report&fuzzy=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q", "value": "finacial report" },
+                { "key": "fuzzy", "value": "true" }
+              ]
+            },
+            "description": "Fuzzy search with fuzziness=AUTO handles typos. 'finacial' will still match 'financial'."
+          },
+          "response": []
+        },
+        {
+          "name": "Search with Tag Facets",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=report&tags=finance,hr",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q", "value": "report" },
+                { "key": "tags", "value": "finance,hr" }
+              ]
+            },
+            "description": "Filter results to documents tagged with 'finance' OR 'hr'. Response includes facet counts."
+          },
+          "response": [
+            {
+              "name": "Search Results",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"hits\": [\n      {\n        \"id\": \"550e8400-e29b-41d4-a716-446655440001\",\n        \"score\": 2.1,\n        \"title\": \"Q4 2024 Financial Report\",\n        \"author\": \"alice@acmecorp.com\",\n        \"tags\": [\"finance\", \"quarterly-report\"],\n        \"createdAt\": \"2024-12-15T10:30:00.000Z\",\n        \"updatedAt\": \"2024-12-15T10:30:00.000Z\",\n        \"highlights\": {\n          \"title\": [\"Q4 2024 <em>Financial</em> <em>Report</em>\"],\n          \"content\": [\"Revenue grew 23% YoY...\"]\n        }\n      }\n    ],\n    \"total\": 1,\n    \"page\": 1,\n    \"limit\": 10,\n    \"took\": 12,\n    \"facets\": {\n      \"tags\": [\n        { \"key\": \"finance\", \"count\": 1 }\n      ],\n      \"authors\": [\n        { \"key\": \"alice@acmecorp.com\", \"count\": 1 }\n      ]\n    }\n  },\n  \"meta\": { \"requestId\": \"req-uuid\", \"timestamp\": \"...\", \"took\": 12, \"total\": 1, \"page\": 1, \"limit\": 10 }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Search with Date Range",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=policy&dateFrom=2024-01-01&dateTo=2024-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q", "value": "policy" },
+                { "key": "dateFrom", "value": "2024-01-01" },
+                { "key": "dateTo", "value": "2024-12-31" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search by Author",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=report&author=alice@acmecorp.com",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q", "value": "report" },
+                { "key": "author", "value": "alice@acmecorp.com" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Scenarios",
+      "item": [
+        {
+          "name": "Missing Tenant Header (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/550e8400-e29b-41d4-a716-446655440001",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "550e8400-e29b-41d4-a716-446655440001"]
+            },
+            "description": "Demonstrates 401 response when X-Tenant-ID header is missing"
+          },
+          "response": [
+            {
+              "name": "Unauthorized",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": "{\n  \"success\": false,\n  \"error\": {\n    \"code\": \"TENANT_ERROR\",\n    \"message\": \"Missing X-Tenant-ID header\",\n    \"requestId\": \"req-uuid\",\n    \"timestamp\": \"2024-12-15T10:30:00.000Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Missing Query Param (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "Demonstrates 400 validation error when 'q' parameter is missing"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

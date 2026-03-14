@@ -1,0 +1,186 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────
+# Blue-Green Deployment Configuration
+# 
+# Usage:
+#   Deploy blue:  docker-compose -f docker-compose.prod.yml up -d api-blue
+#   Deploy green: docker-compose -f docker-compose.prod.yml up -d api-green
+#   Switch traffic to green (update nginx upstream routing):
+#     docker-compose -f docker-compose.prod.yml exec nginx nginx -s reload
+#   Rollback: bring green down, nginx routes back to blue automatically
+# ─────────────────────────────────────────────────────────────────
+
+services:
+  # ─────────────────────────────────────────────
+  # Nginx Load Balancer / Traffic Router
+  # ─────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: queryx-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/blue-green.conf:/etc/nginx/conf.d/blue-green.conf:ro
+    depends_on:
+      - api-blue
+      - api-green
+    restart: unless-stopped
+    mem_limit: 128m
+    networks:
+      - queryx-prod-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────
+  # API Blue (Active)
+  # ─────────────────────────────────────────────
+  api-blue:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: queryx-api-blue
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DEPLOYMENT_COLOR: blue
+      DATABASE_URL: ${DATABASE_URL}
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}
+      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD}
+      REDIS_URL: ${REDIS_URL}
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      LOG_LEVEL: info
+    restart: unless-stopped
+    mem_limit: 512m
+    networks:
+      - queryx-prod-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # API Green (Standby for deployment)
+  # ─────────────────────────────────────────────
+  api-green:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: queryx-api-green
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DEPLOYMENT_COLOR: green
+      DATABASE_URL: ${DATABASE_URL}
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}
+      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD}
+      REDIS_URL: ${REDIS_URL}
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      LOG_LEVEL: info
+    restart: unless-stopped
+    mem_limit: 512m
+    networks:
+      - queryx-prod-network
+    profiles:
+      - green
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL (Production)
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: queryx-postgres-prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    mem_limit: 2g
+    networks:
+      - queryx-prod-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # Elasticsearch (Production - Cluster)
+  # ─────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    container_name: queryx-elasticsearch-prod
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD}
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      xpack.security.http.ssl.enabled: "false"
+    volumes:
+      - elasticsearch_prod_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    mem_limit: 2g
+    networks:
+      - queryx-prod-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTICSEARCH_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────
+  # Redis (Production)
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: queryx-redis-prod
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_prod_data:/data
+    restart: unless-stopped
+    mem_limit: 768m
+    networks:
+      - queryx-prod-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  elasticsearch_prod_data:
+    driver: local
+  redis_prod_data:
+    driver: local
+
+networks:
+  queryx-prod-network:
+    driver: bridge
