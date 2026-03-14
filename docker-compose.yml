@@ -13,16 +13,17 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: postgresql://queryx:queryx_secret@postgres:5432/queryx_db?schema=public
-      ELASTICSEARCH_URL: http://elasticsearch:9200
-      ELASTICSEARCH_USERNAME: elastic
-      ELASTICSEARCH_PASSWORD: queryx_elastic_secret
-      REDIS_URL: redis://redis:6379
-      RATE_LIMIT_WINDOW_MS: 60000
-      RATE_LIMIT_MAX_REQUESTS: 100
-      LOG_LEVEL: info
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL}
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}
+      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD}
+      ELASTICSEARCH_SERVICEACCOUNTTOKEN: ${ELASTICSEARCH_SERVICEACCOUNTTOKEN}
+      REDIS_URL: ${REDIS_URL}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,9 +51,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: queryx
-      POSTGRES_PASSWORD: queryx_secret
-      POSTGRES_DB: queryx_db
+      POSTGRES_USER: ${POSTGRES_USER:-queryx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-queryx_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -78,7 +79,7 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: true
-      ELASTIC_PASSWORD: queryx_elastic_secret
+      ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD}
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
       xpack.security.http.ssl.enabled: false
       bootstrap.memory_lock: "true"
@@ -93,7 +94,7 @@ services:
     networks:
       - queryx-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -u elastic:queryx_elastic_secret http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      test: ["CMD-SHELL", "curl -s -u ${ELASTICSEARCH_USERNAME}:${ELASTICSEARCH_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 20s
       timeout: 10s
       retries: 10
@@ -109,9 +110,7 @@ services:
       - "5601:5601"
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
-      ELASTICSEARCH_USERNAME: elastic
-      ELASTICSEARCH_PASSWORD: queryx_elastic_secret
-      xpack.security.enabled: "false"
+      ELASTICSEARCH_SERVICEACCOUNTTOKEN: ${ELASTICSEARCH_SERVICEACCOUNTTOKEN}
     depends_on:
       elasticsearch:
         condition: service_healthy

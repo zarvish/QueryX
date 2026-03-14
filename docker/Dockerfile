@@ -1,12 +1,12 @@
 # ─────────────────────────────────────────────────────────────────
 # Stage 1: Builder
 # ─────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache python3 make g++
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
@@ -28,12 +28,12 @@ RUN npm run build
 # ─────────────────────────────────────────────────────────────────
 # Stage 2: Production
 # ─────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:20-bookworm-slim AS production
 
 WORKDIR /app
 
 # Install runtime dependencies only
-RUN apk add --no-cache curl dumb-init
+RUN apt-get update && apt-get install -y curl dumb-init openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
@@ -49,8 +49,8 @@ RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+RUN groupadd -g 1001 nodejs && \
+    useradd -r -u 1001 -g nodejs nodejs
 
 USER nodejs
 

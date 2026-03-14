@@ -10,23 +10,24 @@ import { rateLimitMiddleware } from '../../middleware/rateLimit.middleware';
 
 const router = Router();
 
-// Compose dependencies
-const repository = new DocumentRepository(getPrismaClient());
-const service = new DocumentService(
-  repository,
-  getElasticsearchClient(),
-  getRedisClient(),
-);
-const controller = new DocumentController(service);
+const getDocumentController = () => {
+  const repository = new DocumentRepository(getPrismaClient());
+  const service = new DocumentService(
+    repository,
+    getElasticsearchClient(),
+    getRedisClient(),
+  );
+  return new DocumentController(service);
+};
 
 // Apply tenant auth + rate limit on all document routes
 router.use(tenantMiddleware);
 router.use(rateLimitMiddleware);
 
 // Routes
-router.post('/', controller.createDocument);
-router.get('/:id', controller.getDocument);
-router.delete('/:id', controller.deleteDocument);
-router.patch('/:id', controller.updateDocument);
+router.post('/', (req, res, next) => getDocumentController().createDocument(req, res, next).catch(next));
+router.get('/:id', (req, res, next) => getDocumentController().getDocument(req, res, next).catch(next));
+router.delete('/:id', (req, res, next) => getDocumentController().deleteDocument(req, res, next).catch(next));
+router.patch('/:id', (req, res, next) => getDocumentController().updateDocument(req, res, next).catch(next));
 
 export { router as documentRouter };

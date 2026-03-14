@@ -8,14 +8,15 @@ import { rateLimitMiddleware } from '../../middleware/rateLimit.middleware';
 
 const router = Router();
 
-// Compose dependencies
-const service = new SearchService(getElasticsearchClient(), getRedisClient());
-const controller = new SearchController(service);
+const getSearchController = () => {
+  const service = new SearchService(getElasticsearchClient(), getRedisClient());
+  return new SearchController(service);
+};
 
 // Apply tenant auth + rate limit
 router.use(tenantMiddleware);
 router.use(rateLimitMiddleware);
 
-router.get('/', controller.search);
+router.get('/', (req, res, next) => getSearchController().search(req, res, next).catch(next));
 
 export { router as searchRouter };
