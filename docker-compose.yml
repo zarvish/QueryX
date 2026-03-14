@@ -49,7 +49,7 @@ services:
     image: postgres:16-alpine
     container_name: queryx-postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-queryx}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

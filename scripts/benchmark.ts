@@ -8,14 +8,28 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { Client } from '@elastic/elasticsearch';
-import { v4 as uuidv4 } from 'uuid';
 
-process.env['DATABASE_URL'] = process.env['DATABASE_URL'] ?? 'postgresql://queryx:queryx_secret@localhost:5432/queryx_db';
-process.env['ELASTICSEARCH_URL'] = process.env['ELASTICSEARCH_URL'] ?? 'http://localhost:9200';
+import { v4 as uuidv4 } from 'uuid';
+import dotenv from 'dotenv';
+dotenv.config();
+
+if (process.env.DATABASE_URL?.includes('@postgres:5432')) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL.replace('@postgres:5432', '@127.0.0.1:5433');
+}
+process.env['DATABASE_URL'] = process.env['DATABASE_URL'] ?? 'postgresql://queryx:queryx_secret@127.0.0.1:5433/queryx_db?schema=public';
+
+if (process.env.ELASTICSEARCH_URL?.includes('http://elasticsearch:')) {
+  process.env.ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL.replace('http://elasticsearch:', 'http://127.0.0.1:');
+}
+process.env['ELASTICSEARCH_URL'] = process.env['ELASTICSEARCH_URL'] ?? 'http://127.0.0.1:9200';
+
 process.env['ELASTICSEARCH_PASSWORD'] = process.env['ELASTICSEARCH_PASSWORD'] ?? 'queryx_elastic_secret';
 process.env['ELASTICSEARCH_USERNAME'] = process.env['ELASTICSEARCH_USERNAME'] ?? 'elastic';
-process.env['REDIS_URL'] = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
+
+if (process.env.REDIS_URL?.includes('redis://redis:')) {
+  process.env.REDIS_URL = process.env.REDIS_URL.replace('redis://redis:', 'redis://127.0.0.1:');
+}
+process.env['REDIS_URL'] = process.env['REDIS_URL'] ?? 'redis://127.0.0.1:6379';
 process.env['LOG_LEVEL'] = 'error'; // Suppress logs during benchmark
 process.env['NODE_ENV'] = 'production';
 process.env['RATE_LIMIT_WINDOW_MS'] = '60000';
